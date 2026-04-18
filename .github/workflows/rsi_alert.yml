@@ -1,10 +1,12 @@
 name: Crypto RSI Monitor
 
 on:
+  push:
+    branches:
+      - main
   schedule:
-    # Corre cada 4 horas (00:00, 04:00, 08:00, etc UTC)
     - cron: "0 */4 * * *"
-  workflow_dispatch: # Permite ejecutarlo manualmente para testear
+  workflow_dispatch:
 
 jobs:
   build:
