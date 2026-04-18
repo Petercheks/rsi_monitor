@@ -38,7 +38,7 @@ def calculate_rsi():
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
 
-    url = f"https://api.binance.com/api/v3/klines?symbol={SYMBOL}&interval={INTERVAL}&limit=100"
+    url = f"https://api3.binance.com/api/v3/klines?symbol={SYMBOL}&interval={INTERVAL}&limit=100"
 
     try:
         response = requests.get(url, headers=headers, timeout=30)
