@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 SYMBOL = "BTCUSDT"
-INTERVAL = "4h"
+INTERVAL = "240"  # 4 hours in minutes
 PERIOD = 14
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
@@ -34,18 +34,16 @@ def send_telegram(message: str) -> None:
 
 
 def calculate_rsi():
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
-
-    url = f"https://api3.binance.com/api/v3/klines?symbol={SYMBOL}&interval={INTERVAL}&limit=100"
+    url = f"https://api.bybit.com/v5/market/kline?category=linear&symbol={SYMBOL}&interval={INTERVAL}&limit=100"
 
     try:
-        response = requests.get(url, headers=headers, timeout=30)
+        response = requests.get(url, timeout=30)
         response.raise_for_status()
-        data = response.json()
+        data_json = response.json()
+        # Bybit returns data in result -> list
+        data = data_json.get("result", {}).get("list", [])
     except Exception as e:
-        print(f"❌ Error in request to Binance: {e}", file=sys.stderr)
+        print(f"❌ Error in request to Bybit: {e}", file=sys.stderr)
         return
 
     # --- SECURITY VALIDATION ---
@@ -53,26 +51,16 @@ def calculate_rsi():
         print(
             f"⚠️ Insufficient data or format error. Candles received: {len(data) if isinstance(data, list) else 'N/A'}"
         )
-        print(f"Response Body: {data}")
         return
 
+    # Bybit returns data: [startTime, open, high, low, close, volume, turnover]
     df = pd.DataFrame(
         data,
-        columns=[
-            "time",
-            "open",
-            "high",
-            "low",
-            "close",
-            "vol",
-            "close_time",
-            "q_vol",
-            "trades",
-            "takers_buy_base",
-            "takers_buy_quote",
-            "ignore",
-        ],
+        columns=["time", "open", "high", "low", "close", "vol", "turnover"],
     )
+
+    # CRITICAL: Bybit returns newest to oldest. We must reverse it for RSI calculation.
+    df = df.iloc[::-1].reset_index(drop=True)
 
     df["close"] = df["close"].astype(float)
 
@@ -80,11 +68,11 @@ def calculate_rsi():
     gain = delta.where(delta > 0, 0)
     loss = -delta.where(delta < 0, 0)
 
-    # Cálculo de promedio inicial
+    # Initial average calculation
     avg_gain = gain.rolling(window=PERIOD).mean()
     avg_loss = loss.rolling(window=PERIOD).mean()
 
-    # Suavizado de Wilder (el "Senior way" de calcular RSI)
+    # Wilder's Smoothing (The "Senior way" of calculating RSI)
     for i in range(PERIOD, len(df)):
         avg_gain.iloc[i] = (avg_gain.iloc[i - 1] * (PERIOD - 1) + gain.iloc[i]) / PERIOD
         avg_loss.iloc[i] = (avg_loss.iloc[i - 1] * (PERIOD - 1) + loss.iloc[i]) / PERIOD
@@ -92,7 +80,7 @@ def calculate_rsi():
     rs = avg_gain / avg_loss
     df["rsi"] = 100 - (100 / (1 + rs))
 
-    # Verificamos que no haya NaN en el último valor
+    # Check for NaN in the last value
     if pd.isna(df["rsi"].iloc[-1]):
         print("⚠️ The calculated RSI is NaN. Review input data.")
         return
@@ -117,9 +105,12 @@ def calculate_rsi():
         )
         send_telegram(msg)
     else:
-        # Esto te sirve como Heartbeat en Telegram
+        # Heartbeat message
         send_telegram(
-            f"🤖 <b>Live Monitor</b>\nBTC: ${last_price}\nRSI: {last_rsi}\nStatus: All quiet."
+            f"🤖 <b>Live Monitor (Bybit)</b>\n"
+            f"BTC: ${last_price}\n"
+            f"RSI: {last_rsi}\n"
+            f"Status: All quiet."
         )
 
 
