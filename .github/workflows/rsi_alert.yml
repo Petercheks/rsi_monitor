@@ -1,0 +1,25 @@
+name: Crypto RSI Monitor
+
+on:
+  schedule:
+    # Corre cada 4 horas (00:00, 04:00, 08:00, etc UTC)
+    - cron: "0 */4 * * *"
+  workflow_dispatch: # Permite ejecutarlo manualmente para testear
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Run monitor
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: uv run main.py
