@@ -7,8 +7,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-SYMBOL = "BTCUSDT"
-INTERVAL = "240"  # 4 hours in minutes
+# Kraken uses XBT for Bitcoin
+SYMBOL = "XBTUSDT"
+# Kraken interval in minutes: 240 = 4 hours
+INTERVAL = 240
 PERIOD = 14
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
@@ -34,34 +36,40 @@ def send_telegram(message: str) -> None:
 
 
 def calculate_rsi():
-    url = f"https://api.bybit.com/v5/market/kline?category=linear&symbol={SYMBOL}&interval={INTERVAL}&limit=100"
+    # Kraken Public OHLC endpoint - No API Key needed and very GH-friendly
+    url = f"https://api.kraken.com/0/public/OHLC?pair={SYMBOL}&interval={INTERVAL}"
 
     try:
-        response = requests.get(url, timeout=30)
+        # We still use a browser-like User-Agent just in case
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        response = requests.get(url, headers=headers, timeout=30)
         response.raise_for_status()
         data_json = response.json()
-        # Bybit returns data in result -> list
-        data = data_json.get("result", {}).get("list", [])
+
+        # Kraken returns data in result -> [Pair Name]
+        # We take the first pair found in result
+        result = data_json.get("result", {})
+        pair_key = list(result.keys())[0] if result else None
+        data = result.get(pair_key, []) if pair_key else []
+
     except Exception as e:
-        print(f"❌ Error in request to Bybit: {e}", file=sys.stderr)
+        print(f"❌ Error in request to Kraken: {e}", file=sys.stderr)
         return
 
     # --- SECURITY VALIDATION ---
     if not isinstance(data, list) or len(data) < PERIOD + 1:
-        print(
-            f"⚠️ Insufficient data or format error. Candles received: {len(data) if isinstance(data, list) else 'N/A'}"
-        )
+        print(f"⚠️ Insufficient data. Candles received: {len(data)}")
         return
 
-    # Bybit returns data: [startTime, open, high, low, close, volume, turnover]
+    # Kraken returns: [time, open, high, low, close, vwap, volume, count]
     df = pd.DataFrame(
         data,
-        columns=["time", "open", "high", "low", "close", "vol", "turnover"],
+        columns=["time", "open", "high", "low", "close", "vwap", "vol", "count"],
     )
 
-    # CRITICAL: Bybit returns newest to oldest. We must reverse it for RSI calculation.
-    df = df.iloc[::-1].reset_index(drop=True)
-
+    # Kraken sends oldest to newest (correct for RSI), but we ensure types
     df["close"] = df["close"].astype(float)
 
     delta = df["close"].diff()
@@ -72,7 +80,7 @@ def calculate_rsi():
     avg_gain = gain.rolling(window=PERIOD).mean()
     avg_loss = loss.rolling(window=PERIOD).mean()
 
-    # Wilder's Smoothing (The "Senior way" of calculating RSI)
+    # Wilder's Smoothing
     for i in range(PERIOD, len(df)):
         avg_gain.iloc[i] = (avg_gain.iloc[i - 1] * (PERIOD - 1) + gain.iloc[i]) / PERIOD
         avg_loss.iloc[i] = (avg_loss.iloc[i - 1] * (PERIOD - 1) + loss.iloc[i]) / PERIOD
@@ -90,7 +98,7 @@ def calculate_rsi():
 
     if last_rsi <= 35:
         msg = (
-            f"🟢 <b>BUY OPPORTUNITY BTC</b>\n"
+            f"🟢 <b>BUY OPPORTUNITY BTC (Kraken)</b>\n"
             f"Price: ${html.escape(str(last_price))}\n"
             f"RSI: {html.escape(str(last_rsi))}\n"
             f"<i>Buy opportunity.</i>"
@@ -98,16 +106,15 @@ def calculate_rsi():
         send_telegram(msg)
     elif last_rsi >= 70:
         msg = (
-            f"🔴 <b>OVERBOUGHT ALERT</b>\n"
+            f"🔴 <b>OVERBOUGHT ALERT (Kraken)</b>\n"
             f"Price: ${html.escape(str(last_price))}\n"
             f"RSI: {html.escape(str(last_rsi))}\n"
-            f"<i>Do not enter now, wait for correction.</i>"
+            f"<i>Wait for correction.</i>"
         )
         send_telegram(msg)
     else:
-        # Heartbeat message
         send_telegram(
-            f"🤖 <b>Live Monitor (Bybit)</b>\n"
+            f"🤖 <b>Live Monitor (Kraken)</b>\n"
             f"BTC: ${last_price}\n"
             f"RSI: {last_rsi}\n"
             f"Status: All quiet."
