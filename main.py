@@ -10,7 +10,7 @@ load_dotenv()
 # Kraken uses XBT for Bitcoin
 SYMBOL = "XBTUSDT"
 # Kraken interval in minutes: 240 = 4 hours
-INTERVAL = 240
+INTERVAL = 120
 PERIOD = 14
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
