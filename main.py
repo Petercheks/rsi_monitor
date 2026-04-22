@@ -9,7 +9,7 @@ load_dotenv()
 
 # Kraken uses XBT for Bitcoin
 SYMBOL = "XBTUSDT"
-INTERVAL = 60
+INTERVAL = 240
 PERIOD = 14
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
@@ -112,7 +112,7 @@ def calculate_rsi():
         )
         send_telegram(msg)
     else:
-        send_telegram(
+        print(
             f"🤖 <b>Live Monitor (Kraken)</b>\n"
             f"BTC: ${last_price}\n"
             f"RSI: {last_rsi}\n"
